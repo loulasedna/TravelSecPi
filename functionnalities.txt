@@ -1,0 +1,23 @@
+network
+    access point wifi 
+    connect to another access point and nat
+    doh for dns 
+    vpn : openvpn , tor, wireguard
+
+file: 
+    basic file management (list in directory)
+    cypher disk (cryptsetup)
+    cypher directory (ecryptfs)
+    password management
+    copy file and verify each file (rsync)
+    for photography file preview of all images
+    for video : stream of all video
+    copy with options 
+    show copy status
+
+security
+    iptables 
+
+constraint : 
+    memory consumption
+    
