@@ -12,3 +12,4 @@ ubuntu ubuntu = (root) NOPASSWD: /usr/bin/umount
 ubuntu ubuntu = (root) NOPASSWD: /usr/bin/fsck
 
 f3read & f3write
+https://ccollins.wordpress.com/2016/01/18/testing-sd-cards-with-linux/
