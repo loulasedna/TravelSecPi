@@ -37,6 +37,7 @@ class Disks (object):
         pass
 
     def umount_disks(self, disks=None):
+        #sudo pmount
 
         pass
 
@@ -81,6 +82,23 @@ class Disks (object):
         pass
 
     def create_luks_disks(self, disks=None):
+        
+        """ 
+        create 
+        sudo cryptsetup --cipher aes-xts-plain64 --key-size 512 --hash sha512 --iter-time 2000 --align-payload=2048 -v luksFormat /dev/sda
+        
+        sudo cryptsetup luksOpen /dev/sda1 my_encrypted_volume
+        Now you can mount it as usual:
+
+        sudo mkdir /media/my_device
+        sudo mount /dev/mapper/my_encrypted_volume /media/my_device
+        To lock the container again, it needs to be unmounted first:
+
+        sudo umount /media/my_device
+        sudo cryptsetup luksClose my_encrypted_volume
+        To automatically put it in the /media location, use the udisks tool
+
+        sudo udisks --mount /dev/mapper/my_encrypted_volume """
         pass
 
 
