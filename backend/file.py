@@ -10,4 +10,3 @@ class directory(file):
 class media(file):
     def __init__(self):
         pass
-    
