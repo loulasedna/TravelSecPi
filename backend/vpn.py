@@ -25,3 +25,7 @@ class wireguard(vpn):
 class ipsec(vpn):
     def __init__(self):
         pass
+
+class iodine(vpn):
+    def __init__(self):
+        pass
