@@ -12,8 +12,7 @@ class network(object):
         self.interfaces['other'] = dict()
 
         cmd = "ip -j link show"
-        p = subprocess.run(
-            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         if p.returncode != 0:
             raise Exception()  # TODO
@@ -43,15 +42,67 @@ class network(object):
             interface), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return p.stdout.decode() if p.returncode == 0 else p.stderr.decode()
 
-    def deactivate_interface(self):
-        # sudo ip link set wlan0 down
-        pass
+    def deactivate_interface(self,interface):
+        p = subprocess.run("sudo ip link set {} down".format(
+            interface), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return p.stdout.decode() if p.returncode == 0 else p.stderr.decode()
 
     def activate_nat(self, interface_in, interface_out):
         pass
 
     def deactivate_nat(self, interface_in, interface_out):
         pass
+    
+    def check_internet_connection(self):
+        check = dict()
+        check['default_gw'] = False
+        check['default_ping'] = False
+        check['dns'] = False
+        check['internet_ping'] = False
+        check['http'] = False
+        check['https'] = False
+
+        # check if default route
+        process = subprocess.run("ip route show default", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if 'default' in process.stdout.decode():
+            check['default_gw'] = True
+            gw = process.stdout.decode().split(' ')[2]
+        else:
+            return check        
+
+        # check ping default_gateway
+        process = subprocess.run("ping -c 1 {}".format(gw), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if process.returncode == 0:
+            check['default_ping'] = True
+
+        # check if name resolution is ok
+        process = subprocess.run("host google.com", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if  process.returncode == 0:
+            check['dns'] = True
+        else:
+            return check        
+
+        # check if ping google is OK
+        process = subprocess.run("ping -c 1 www.google.com", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if process.returncode == 0:
+            check['internet_ping'] = True
+        
+        # check http
+        process = subprocess.run("wget http://www.google.com --timeout=2 --tries=2 -O  /dev/null", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        if process.returncode == 0:
+            check['http'] = True
+        
+        # check https
+        process = subprocess.run("wget https://www.google.com --timeout=2 --tries=2 -O  /dev/null", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if process.returncode == 0:
+            check['https'] = True
+        
+        return check
+        
+    def get_internet_speed(self):
+        p = subprocess.run("speedtest-cli --json", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return p.stdout.decode() if p.returncode == 0 else p.stderr.decode()
 
 class wifi_interfaces(network):
 
@@ -92,11 +143,11 @@ class wifi_interfaces(network):
                     if item['interface'] not in scan.keys():
                         scan[item['interface']] = list()
 
-                if 'signal' in line:
+                if 'signal:' in line:
                     item['power'] = line.split(' ')[-2]
-                if 'freq' in line:
+                if 'freq:' in line:
                     item['freq'] = line.split(' ')[-1]
-                if 'SSID' in line:
+                if 'SSID:' in line:
                     item['ssid'] = line.split(' ')[-1]
                 if 'WPA:' in line:
                     item['wpa'] = True
@@ -114,11 +165,15 @@ class wifi_interfaces(network):
         return scan
 
     def connect_wifi(self, wifi_interface, password):
+        # https://donnutcompute.wordpress.com/2014/04/20/connect-to-wi-fi-via-command-line/
         pass
 
-    def disconnect_wifi(self, wifi_interface, password):
-        pass
+    def disconnect_wifi(self, wifi_interface):
+        process = subprocess.run("sudo iw {} disconect".format(
+                wifi_interface), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
+        if process.returncode != 0:
+            raise Exception()
 
 class ethernet_interfaces(network):
     def list_interfaces(self):
@@ -129,3 +184,5 @@ if __name__ == "__main__":
     wifi = wifi_interfaces()
     print(wifi.get_interfaces())
     print(wifi.scan_wifi(['wlan0', 'wlan1']))
+    print(wifi.get_internet_speed())
+    print(wifi.check_internet_connection())
