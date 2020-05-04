@@ -43,7 +43,7 @@ class network(object):
             interface), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return p.stdout.decode() if p.returncode == 0 else p.stderr.decode()
 
-    def deactivate_interface(self, interface):
+    def deactivate_interfaces(self, interface):
         p = subprocess.run("sudo ip link set {} down".format(
             interface), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return p.stdout.decode() if p.returncode == 0 else p.stderr.decode()
@@ -116,9 +116,6 @@ class network(object):
 
 
 class wifi_interfaces(network):
-    def __init__(self):
-        self.wifilist = dict()
-
     def scan_wifi(self, wifi_interfaces):
         wifi_interfaces = list(wifi_interfaces)
         scan = dict()
@@ -137,9 +134,10 @@ class wifi_interfaces(network):
             for line in lines:
 
                 if re.search(r"[a-z0-9:]{17}", line):  # MAC/interface/BSS
-
-                    scan[item['interface']].append(
-                        item) if item is not None else None  # add dict only if created -> after
+                    
+                    # add dict only if created -> after
+                    if item is not None:
+                        scan[item['interface']].append(item)    
 
                     item = dict()  # create new dict for new wifi
 
@@ -178,44 +176,64 @@ class wifi_interfaces(network):
         self.wifilist = scan
         return scan
 
-    def connect_wifi(self,wifiname, password):
+    def connect_wifi(self,interface_wifi, wifi_name, password):
+        for wifi in self.wifilist[interface_wifi]:
+            if wifi_name == wifi['ssid']:
 
-       
-        if wifi['wpa'] is True and wifi['wpa2'] is True:
-            print ('wpa2')
-        if wifi['wpa'] is True and wifi['wpa2'] is False:
-            print ('wpa1')
-        if wifi['wep'] is True:
-            print ('wep')
-        if wifi['wep'] is False and wifi['wpa'] is False and wifi['wpa2'] is False:
-            print ('no cipher')
-        pass
+                self.deactivate_interfaces(interface_wifi)
+                self.activate_interfaces(interface_wifi)
+
+                if wifi['wpa2'] is True or wifi['wpa'] is True:
+
+                    generate  = subprocess.run("wpa_passphrase {} {} | sudo tee /etc/wpa_supplicant.conf".format(wifi['ssid'],password), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if generate.returncode != 0:
+                        raise Exception('wifi','unable_to_generate_wpa_conf:{}'.format(wifi['ssid']))
+                    
+                    connect  = subprocess.run("sudo wpa_supplicant -B -c /etc/wpa_supplicant.conf -i {}".format(interface_wifi), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if connect.returncode != 0:
+                        raise Exception('wifi','unable_to_connect:{}'.format(wifi['ssid']))
+                    
+                elif wifi['wep'] is True:
+                    connect  = subprocess.run("iw dev {} connect {} key 0:{}".format(interface_wifi, wifi['ssid'], password), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if connect.returncode != 0:
+                        raise Exception('wifi','unable_to_connect:{}'.format(wifi['ssid']))
+
+                else: # no cipher
+                    connect  = subprocess.run("sudo iw {} connect {}".format(interface_wifi, wifi['ssid']), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    if connect.returncode != 0:
+                        raise Exception('wifi','unable_to_connect:{}'.format(wifi['ssid']))
+
+                dhcp = subprocess.run("sudo dhclient -v {}".format(interface_wifi), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if dhcp.returncode != 0:
+                    raise Exception('wifi','unable_to_get_dhcp_address')
+                    
+                    return True
+
 
     def disconnect_wifi(self, wifi_interface):
-        process = subprocess.run("sudo iw {} disconect".format(
+        process = subprocess.run("sudo iw {} disconnect".format(
             wifi_interface), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         if process.returncode != 0:
             raise Exception()
-
+    
+    def get_wireless_interfaces(self):
+        return self.get_interfaces()['wireless']
 
 class ethernet_interfaces(network):
     def list_interfaces(self):
         pass
-
-
+    
+    def get_wired_interfaces(self):
+        return self.get_interfaces()['wired']
+    
 if __name__ == "__main__":
     wifi = wifi_interfaces()
-    print(wifi.get_interfaces())
+    print(wifi.get_wireless_interfaces())
+    print(wifi.activate_interfaces('wlan1'))
+    print(wifi.activate_interfaces('wlan0'))
     print(wifi.scan_wifi(['wlan0', 'wlan1']))
     print(wifi.get_internet_speed())
     print(wifi.check_internet_connection())
-    
-    
-    a = {'wlan0': [{'mac': False, 'wpa': False, 'wpa2': True, 'tkip': False, 'ccmp': True, 'psk': True, 'wep': False, 'interface': 'wlan0', 'BSS': '00:13:ef:f3:06:c4', 'freq': '2412', 'power': '-34.00', 'ssid': 'Renagre-Nippon'}, {'mac': False, 'wpa': True, 'wpa2': True, 'tkip': True, 'ccmp': True, 'psk': True, 'wep': False, 'interface': 'wlan0', 'BSS': '00:37:b7:07:f9:0e', 'freq': '2412', 'power': '-32.00', 'ssid': 'Renagre-bgn'}, {'mac': False, 'wpa': False, 'wpa2': False, 'tkip': False, 'ccmp': False, 'psk': False, 'wep': False, 'interface': 'wlan0', 'BSS': 'c0:c1:c0:59:c4:ed', 'freq': '2437', 'power': '-27.00', 'ssid': '\\x00\\x00\\x00\\x00\\x00\\x00'}, {'mac': False, 'wpa': True, 'wpa2': False, 'tkip': True, 'ccmp': True, 'psk': True, 'wep': False, 'interface': 'wlan0', 'BSS': 'ca:09:c9:fe:2c:50', 'freq': '2467', 'power': '-34.00', 'ssid': 'freebox_Adrien'}, {'mac': False, 'wpa': True, 'wpa2': True, 'tkip': True, 'ccmp': True, 'psk': True, 'wep': False, 'interface': 'wlan0', 'BSS': '00:37:b7:07:f9:0f', 'freq': '5180', 'power': '-60.00', 'ssid': 'Renagre-bgn_5GHz'}, {'mac': False, 'wpa': True, 'wpa2': True, 'tkip': False, 'ccmp': True, 'psk': True, 'wep': False, 'interface': 'wlan0', 'BSS': '6c:38:a1:05:9b:7d', 'freq': '5180', 'power': '-81.00', 'ssid': 'Bbox-E5221EED'}, {'mac': False, 'wpa': True, 'wpa2': True, 'tkip': True, 'ccmp': True, 'psk': True, 'wep': False, 'interface': 'wlan0', 'BSS': 'ac:3b:77:4d:c9:0d', 'freq': '5180', 'power': '-59.00', 'ssid': 'SFR-c906_5GHz'}, {'mac': False, 'wpa': True, 'wpa2': True, 'tkip': False, 'ccmp': True, 'psk': True, 'wep': False, 'interface': 'wlan0', 'BSS': '84:a1:d1:2d:1a:84', 'freq': '5680', 'power': '-67.00', 'ssid': 'Bbox-AF9F8D9C'}, {'mac': False, 'wpa': True, 'wpa2': True, 'tkip': True, 'ccmp': True, 'psk': True, 'wep': False, 'interface': 'wlan0', 'BSS': 'ac:3b:77:4d:c9:0c', 'freq': '2412', 'power': '-34.00', 'ssid': 'LamaFiesta'}, {'mac': False, 'wpa': True, 'wpa2': False, 'tkip': False, 'ccmp': True, 'psk': True, 'wep': False, 'interface': 'wlan0', 'BSS': 'c2:c1:c0:59:c4:ee', 'freq': '2437', 'power': '-25.00', 'ssid': 'dd-wrt_vap2'}, {'mac': False, 'wpa': False, 'wpa2': False, 'tkip': False, 'ccmp': False, 'psk': False, 'wep': False, 'interface': 'wlan0', 'BSS': 'c0:c1:c0:59:c4:ed', 'freq': '2437', 'power': '-33.00', 'ssid': 'dd-wrt'}, {'mac': False, 'wpa': False, 'wpa2': False, 'tkip': False, 'ccmp': False, 'psk': False, 'wep': False, 'interface': 'wlan0', 'BSS': 'c2:c1:c0:59:c4:ef', 'freq': '2437', 'power': '-25.00', 'ssid': 'dd-wrt_vap3'}, {'mac': False, 'wpa': True, 'wpa2': True, 'tkip': False, 'ccmp': True, 'psk': True, 'wep': False, 'interface': 'wlan0', 'BSS': '6c:38:a1:05:9b:7c', 'freq': '5180', 'power': '-77.00', 'ssid': ''}], 'wlan1': [{'mac': False, 'wpa': True, 'wpa2': True, 'tkip': True, 'ccmp': True, 'psk': True, 'wep': False, 'interface': 'wlan1', 'BSS': '00:37:b7:07:f9:0f', 'freq': '5180', 'power': '-65.00', 'ssid': 'Renagre-bgn_5GHz'}, {'mac': False, 'wpa': True, 'wpa2': True, 'tkip': False, 'ccmp': True, 'psk': True, 'wep': False, 'interface': 'wlan1', 'BSS': '84:a1:d1:2d:1a:84', 'freq': '5680', 'power': '-70.00', 'ssid': 'Bbox-AF9F8D9C'}, {'mac': False, 'wpa': True, 'wpa2': True, 'tkip': True, 'ccmp': True, 'psk': True, 'wep': False, 'interface': 'wlan1', 'BSS': '00:37:b7:07:f9:0e', 'freq': '2412', 'power': '-50.00', 'ssid': 'Renagre-bgn'}, {'mac': False, 'wpa': False, 'wpa2': True, 'tkip': False, 'ccmp': True, 'psk': True, 'wep': False, 'interface': 'wlan1', 'BSS': '00:13:ef:20:3d:38', 'freq': '2412', 'power': '-50.00', 'ssid': 'Renagre-USA'}, {'mac': False, 'wpa': False, 'wpa2': False, 'tkip': False, 'ccmp': False, 'psk': False, 'wep': False, 'interface': 'wlan1', 'BSS': 'c0:c1:c0:59:c4:ed', 'freq': '2437', 'power': '-24.00', 'ssid': 'dd-wrt'}, {'mac': False, 'wpa': False, 'wpa2': False, 'tkip': False, 'ccmp': False, 'psk': False, 'wep': False, 'interface': 'wlan1', 'BSS': 'c2:c1:c0:59:c4:ef', 'freq': '2437', 'power': '-24.00', 'ssid': 'dd-wrt_vap3'}, {'mac': False, 'wpa': True, 'wpa2': False, 'tkip': False, 'ccmp': True, 'psk': True, 'wep': False, 'interface': 'wlan1', 'BSS': 'c2:c1:c0:59:c4:ee', 'freq': '2437', 'power': '-24.00', 'ssid': 'dd-wrt_vap2'}, {'mac': False, 'wpa': True, 'wpa2': True, 'tkip': True, 'ccmp': True, 'psk': True, 'wep': False, 'interface': 'wlan1', 'BSS': 'ac:3b:77:4d:c9:0c', 'freq': '2412', 'power': '-56.00', 'ssid': 'LamaFiesta'}]}
-    for element in a:
-        wifi.connect_wifi(element,'password')
+    print(wifi.connect_wifi('wlan1','dd-wrt', None))
 
-        
-        
-    # https://donnutcompute.wordpress.com/2014/04/20/connect-to-wi-fi-via-command-line/

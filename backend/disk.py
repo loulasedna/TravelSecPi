@@ -8,14 +8,10 @@ class Disks (object):
         self.disks = None
 
     def refresh_disks(self):
-        try:
             p = subprocess.run("lsblk -o name,label,kname,fstype,mountpoint --json",
                                shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout = p.stdout.decode()
-            stderr = p.stderr.decode()
-            self.disks = json.loads(stdout)
-        except Exception as e:
-            logging.debug(e, stderr)
+            if p.returncode !=0:
+                raise Exception('DiskError','unable_to_check_disk: {} '.format(disk))
 
     def check_disks_partitions(self, disk=None):
         if self.disks is None:
@@ -24,21 +20,22 @@ class Disks (object):
             for disk in self.disks['blockdevices']:
                 if 'sd' in disk['name']:
                     for partition in disk['children']:
-                        p = subprocess.run("sudo fdisk -va %s".format(
+                        p = subprocess.run("sudo fdisk -va {} ".format(
                             partition['name']), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                        stdout = p.stdout.decode()
-                        stderr = p.stderr.decode()
+                        if p.returncode !=0:
+                            raise Exception('DiskError','unable_to_check_disk: {} '.format(disk))
 
     def mount_disks(self, disks=disk, label=label):
-        p = subprocess.run(" %s %s".format(
+        p = subprocess.run("sudo mount {} {}".format(
             disk, label), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout = p.stdout.decode()
-        stderr = p.stderr.decode()
-        pass
+        if p.returncode !=0:
+            raise Exception('DiskError','unable_to_mount_disk: {} on {}'.format(disks,label))
 
     def umount_disks(self, disks=None):
-        #sudo pmount
-
+        p = subprocess.run("sudo umount {} {}".format(
+            disk, label), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if p.returncode !=0:
+            raise Exception('DiskError','unable_to_mount_disk: {} on {}'.format(disks,label))
         pass
 
     def view_usb_disks(self):
@@ -52,14 +49,14 @@ class Disks (object):
         # checl if disk is like /dev/sda or disk1
         p = subprocess.run("dd count=1000 bs=1M if=/dev/urandom of=test.img",
                            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout = p.stdout.decode()
-        stderr = p.stderr.decode()
+        if p.returncode !=0:
+            raise Exception('DiskError','unable_to_test_read_performance')
 
     def check_disk_write_performace(self, disk=None):
         p = subprocess.run("dd count=1000 bs=1M if=test.img of=/dev/null",
                            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout = p.stdout.decode()
-        stderr = p.stderr.decode()
+        if p.returncode !=0:
+            raise Exception('DiskError','unable_to_test_write_performance')
 
     def check_disk_errors(self, disks=None):
         pass
@@ -68,19 +65,17 @@ class Disks (object):
 
         p = subprocess.run("",
                            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout = p.stdout.decode()
-        stderr = p.stderr.decode()
-
-        pass
-
+        
     def shred_disks(self, disks=None):
+        
         self.umount_disks(disks=disks)
-        p = subprocess.run("sudo shred -n 1 -v -z %s".format(disks),
+        
+        p = subprocess.run("sudo shred -n 1 -v -z {}".format(disks),
                            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout = p.stdout.decode()
-        stderr = p.stderr.decode()
-        pass
-
+        
+        if p.returncode !=0:
+                raise Exception('DiskError','unable_to_test_write_performance')
+        
     def create_luks_disks(self, disks=None):
         
         """ 
