@@ -6,6 +6,8 @@ import os
 
 class Disks (object):
     def __init__(self):
+
+        logging.info('get current disk')
         p = subprocess.run("lsblk -o name,label,kname,fstype,mountpoint,type,hotplug,path,size,fstype,fssize,fsused,fsuse% --json",
                            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if p.returncode != 0:
@@ -15,9 +17,20 @@ class Disks (object):
         self.disks = self.disks['blockdevices']
 
     def refresh_disks(self):
+        """refresh the list of disks and their attributes
+        """
         self.__init__()
 
     def check_disks_partitions(self, disk=None):
+        """Execute check disk (fsck -va) on all disk if none is given.
+        If disk is given this will execute fsck on this disk
+
+        Keyword Arguments:
+            disk {str} -- path of the disk, example: '/dev/sda' (default: {None})
+
+        Raises:
+            Exception: if check disk causes problems
+        """
         self.refresh_disks()
         if disk is None:
             for disk in self.disks:
@@ -30,6 +43,17 @@ class Disks (object):
                                 'DiskError', 'unable_to_check_disk: {} '.format(disk))
 
     def find_disk(self, disk_to_find):
+        """find disk by mountpoint or path
+
+        Arguments:
+            disk_to_find {str} -- path of the disk or partition, example: '/dev/sda' or '/dev/sda1' 
+
+        Raises:
+            Exception: [if disk is impossible to find]
+
+        Returns:
+            [dict] -- [dict that contains lsblk informations about disk or partition]
+        """
         self.refresh_disks()
 
         for disk in self.disks:
@@ -41,7 +65,26 @@ class Disks (object):
                     if disk_to_find == children['path'] or disk_to_find == children['mountpoint']:
                         return children
 
+        raise Exception('disk', 'unable_to_find_disk: {}'.format(disk_to_find))
+
     def mount_disk(self, disk_to_mount, mount_point=None):
+        """mount disk given in parameters on mount point. 
+        if mount point is given: disk will be mounted on it
+        if not : disk will be mounted on /media/<name of disk>
+
+        Arguments:
+            disk_to_mount {str} -- path of disk like '/dev/sda
+
+        Keyword Arguments:
+            mount_point {str} -- path on mount point like '/media/mount' (default: {None})
+
+        Raises:
+            Exception: given disk is unknow
+            Exception: mount operation is impossible
+
+        Returns:
+            [type] -- [description]
+        """
         if mount_point is None:
             mount_point = '/media/'+disk_to_mount.split('/')[-1]
 
@@ -68,7 +111,18 @@ class Disks (object):
                 return mount_point
 
     def umount_disk(self, disk_to_umount):
+        """umount given disk
 
+        Arguments:
+            disk_to_umount {str} -- path or mount point of disk (/media/sda or /dev/sda)
+
+        Raises:
+            Exception: given disk is unknow
+            Exception: mount operation is impossible
+
+        Returns:
+            bool -- True if umount operation is ok
+        """
         temp = self.find_disk(disk_to_umount)
         print(disk_to_umount, temp)
 
@@ -90,6 +144,12 @@ class Disks (object):
             return True
 
     def view_usb_disks(self):
+        """return only usb disk : disk with hotplug flag is True 
+
+        Returns:
+            list -- list of disk and attributes of hotplug disk
+        """
+
         self.refresh_disks()
         ret = list()
         for disk in self.disks:
@@ -97,25 +157,65 @@ class Disks (object):
                 ret.append(disk)
         return ret
 
-    def check_disk_read_performance(self, disk):
-        # check if disk is mounted
-        # check if disk is like /dev/sda or disk1
+    def check_read_and_write_disk_performance(self, disk):
+        """check wrinting and reading performance on given disk by writing and reading a 1GB generated image
+
+        Arguments:
+            disk {str} -- path of the disk, example: '/dev/sda'
+
+        Raises:
+            Exception: if writing on disk is impossible
+            Exception: if reading on disk is impossible
+
+        Returns:
+            dict -- performance of writing and reading of given disk
+        """
         self.mount_disk(disk)
-        p = subprocess.run("dd count=1000 bs=1M if=/dev/urandom of=test.img",
+        mount_point = self.find_disk(disk)['mountpoint']
+
+        perf = dict()
+
+        p = subprocess.run("dd count=1000 bs=1M if=/dev/urandom of={}/test.img".format(mount_point),
                            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if p.returncode != 0:
             raise Exception(
                 'DiskError', 'unable_to_test_read_performance: {}'.format(p.stderr.decode()))
 
-    def check_disk_write_performace(self, disk=None):
-        p = subprocess.run("dd count=1000 bs=1M if=test.img of=/dev/null",
+        temp = p.stderr.decode()
+        perf['write']=temp.splitlines()[-1]
+
+        self.umount_disk(disk)
+        self.mount_disk(disk)
+        
+        mount_point = self.find_disk(disk)['mountpoint']
+        
+
+        p = subprocess.run("dd count=1000 bs=1M if={}/test.img of=/dev/null".format(mount_point),
                            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
         if p.returncode != 0:
             raise Exception(
                 'DiskError', 'unable_to_test_write_performance: {} '.format(p.stderr.decode()))
+        
+        temp = p.stderr.decode()
+        perf['read'] = temp.splitlines()[-1]
+        os.remove('{}/test.img'.format(mount_point))
+        
+        return perf
 
     def check_disk_capacity_performance_errors(self, disk):
-        # f3read & f3 write
+        self.format_disk(disk, 'ext4')
+        mount_point = self.mount_disk(disk)
+        p = subprocess.Popen([" sudo f3write . >/dev/null 2> /tmp/shred.txt & disown".format(
+            disk)], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p.wait()
+        if p.poll() is not None:
+            raise Exception(
+                'DiskError', 'unable_to_shred_disk: {}'.format(p.stderr))
+        else:
+            return p.pid
+
+
         pass
 
     def format_disk(self, disk, type):
@@ -128,30 +228,21 @@ class Disks (object):
                 disk, p_format.stderr.decode()))
 
     def shred_disks(self, disk):
-        """[summary]
 
-        Arguments:
-            disk {str} -- [disk to shred. Example '/dev/sda']
-
-        Raises:
-            Exception: [when it is impossible to shred the disk: disk name not correct...]
-
-        Returns:
-            [type] -- [True if shred is OK]
-        """
         self.refresh_disks()
         self.umount_disk(disk)
 
         p = subprocess.Popen(["sudo shred -n 1 -v -z {} 2> /tmp/shred.txt & disown".format(
             disk)], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        print (p.poll())
+
         if p.poll() is not None:
             raise Exception(
                 'DiskError', 'unable_to_shred_disk: {}'.format(p.stderr))
         else:
-            return True
+            return p.pid
 
     def get_disk_usage(self, disk_name):
+
         ret = list()
         for disk in self.disks:
             temp = None
@@ -196,8 +287,9 @@ if __name__ == "__main__":
     disk = Disks()
     ret = disk.view_usb_disks()
     # print(disk.get_disk_usage('EOS_DIGITAL'))
-    print(disk.format_disk('/dev/sda', 'ext4'))
-    print(disk.mount_disk('/dev/sda', '/media/sda'))
-    print(disk.umount_disk('/media/sda'))
-    print(disk.shred_disks('/dev/sda'))
-    print(disk.format_disk('/dev/sda', 'ext4'))
+    # print(disk.format_disk('/dev/sda', 'ext4'))
+    # print(disk.mount_disk('/dev/sda', '/media/sda'))
+    # print(disk.umount_disk('/media/sda'))
+    # print(disk.shred_disks('/dev/sda'))
+    # print(disk.format_disk('/dev/sda', 'ext4'))
+    print (disk.check_read_and_write_disk_performance('/dev/sdb'))
