@@ -2,7 +2,7 @@
 
 What is TravelSecPi ? 
 
-A long time ago, when I travel to Japan, I search a very little computer which is able to:
+basically, it is a raspberry pi for traveller which integrate some security features : 
 - Backup on hard drive , if unconnected, and online my photos and video from my DSLR
 - Visualised my photos an video which are in RAW format 
 - Store some informations like maps on it 

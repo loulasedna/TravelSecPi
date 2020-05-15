@@ -16,7 +16,7 @@ class network(object):
             cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         if p.returncode != 0:
-            raise Exception()  # TODO
+            raise Exception('interfaces','unable_to_get_local_interfaces')  # TODO
 
         interfaces = json.loads(p.stdout.decode())
         for interface in interfaces:
@@ -48,11 +48,33 @@ class network(object):
             interface), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return p.stdout.decode() if p.returncode == 0 else p.stderr.decode()
 
-    def activate_nat(self, interface_in, interface_out):
-        pass
+    def activate_forwarding(self):
+        p = subprocess.run('sudo echo "1" > /proc/sys/net/ipv4/ip_forward',
+                           shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return p.stdout.decode() if p.returncode == 0 else p.stderr.decode()
 
-    def deactivate_nat(self, interface_in, interface_out):
-        pass
+    def deactivate_forwarding(self):
+        p = subprocess.run('sudo echo "0" > /proc/sys/net/ipv4/ip_forward',
+                           shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return p.stdout.decode() if p.returncode == 0 else p.stderr.decode()
+
+    def activate_nat(self, interface_in, interface_out):
+        ret = False
+        self.activate_forwarding()
+        p = subprocess.run("sudo iptables -t nat -A POSTROUTING -o {} -j MASQUERADE\
+                            sudo iptables -A FORWARD -i {} -o {} -m state --state RELATED,ESTABLISHED -j ACCEPT\
+                            sudo iptables -A FORWARD -i {} -o enp0s3 -j ACCEPT\
+                            ".format(interface_out,interface_in, interface_out,interface_in ), 
+                            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if p.returncode != 0:
+            raise Exception('nat','unable_to_activate_nat_for_interfaces: {} {}'.format(interface_in,interface_out))
+        return p.stdout.decode() if p.returncode == 0 else p.stderr.decode()
+
+    def deactivate_nat(self):
+        self.deactivate_forwarding()
+        p = subprocess.run("sudo iptables -F", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if p.returncode !=0:
+            raise Exception('nat','unable_to_deactivate_nat')
 
     def check_internet_connection(self):
         check = dict()
@@ -134,10 +156,10 @@ class wifi_interfaces(network):
             for line in lines:
 
                 if re.search(r"[a-z0-9:]{17}", line):  # MAC/interface/BSS
-                    
+
                     # add dict only if created -> after
                     if item is not None:
-                        scan[item['interface']].append(item)    
+                        scan[item['interface']].append(item)
 
                     item = dict()  # create new dict for new wifi
 
@@ -176,7 +198,7 @@ class wifi_interfaces(network):
         self.wifilist = scan
         return scan
 
-    def connect_wifi(self,interface_wifi, wifi_name, password):
+    def connect_wifi(self, interface_wifi, wifi_name, password):
         for wifi in self.wifilist[interface_wifi]:
             if wifi_name == wifi['ssid']:
 
@@ -185,30 +207,38 @@ class wifi_interfaces(network):
 
                 if wifi['wpa2'] is True or wifi['wpa'] is True:
 
-                    generate  = subprocess.run("wpa_passphrase {} {} | sudo tee /etc/wpa_supplicant.conf".format(wifi['ssid'],password), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    generate = subprocess.run("wpa_passphrase {} {} | sudo tee /etc/wpa_supplicant.conf".format(
+                        wifi['ssid'], password), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     if generate.returncode != 0:
-                        raise Exception('wifi','unable_to_generate_wpa_conf:{}'.format(wifi['ssid']))
-                    
-                    connect  = subprocess.run("sudo wpa_supplicant -B -c /etc/wpa_supplicant.conf -i {}".format(interface_wifi), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        raise Exception(
+                            'wifi', 'unable_to_generate_wpa_conf:{}'.format(wifi['ssid']))
+
+                    connect = subprocess.run("sudo wpa_supplicant -B -c /etc/wpa_supplicant.conf -i {}".format(
+                        interface_wifi), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     if connect.returncode != 0:
-                        raise Exception('wifi','unable_to_connect:{}'.format(wifi['ssid']))
-                    
+                        raise Exception(
+                            'wifi', 'unable_to_connect:{}'.format(wifi['ssid']))
+
                 elif wifi['wep'] is True:
-                    connect  = subprocess.run("iw dev {} connect {} key 0:{}".format(interface_wifi, wifi['ssid'], password), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    connect = subprocess.run("iw dev {} connect {} key 0:{}".format(
+                        interface_wifi, wifi['ssid'], password), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     if connect.returncode != 0:
-                        raise Exception('wifi','unable_to_connect:{}'.format(wifi['ssid']))
+                        raise Exception(
+                            'wifi', 'unable_to_connect:{}'.format(wifi['ssid']))
 
-                else: # no cipher
-                    connect  = subprocess.run("sudo iw {} connect {}".format(interface_wifi, wifi['ssid']), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                else:  # no cipher
+                    connect = subprocess.run("sudo iw {} connect {}".format(
+                        interface_wifi, wifi['ssid']), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     if connect.returncode != 0:
-                        raise Exception('wifi','unable_to_connect:{}'.format(wifi['ssid']))
+                        raise Exception(
+                            'wifi', 'unable_to_connect:{}'.format(wifi['ssid']))
 
-                dhcp = subprocess.run("sudo dhclient -v {}".format(interface_wifi), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                dhcp = subprocess.run("sudo dhclient -v {}".format(interface_wifi),
+                                      shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if dhcp.returncode != 0:
-                    raise Exception('wifi','unable_to_get_dhcp_address')
-                    
-                    return True
+                    raise Exception('wifi', 'unable_to_get_dhcp_address')
 
+                    return True
 
     def disconnect_wifi(self, wifi_interface):
         process = subprocess.run("sudo iw {} disconnect".format(
@@ -216,17 +246,19 @@ class wifi_interfaces(network):
 
         if process.returncode != 0:
             raise Exception()
-    
+
     def get_wireless_interfaces(self):
         return self.get_interfaces()['wireless']
+
 
 class ethernet_interfaces(network):
     def list_interfaces(self):
         pass
-    
+
     def get_wired_interfaces(self):
         return self.get_interfaces()['wired']
-    
+
+
 if __name__ == "__main__":
     wifi = wifi_interfaces()
     print(wifi.get_wireless_interfaces())
@@ -235,5 +267,4 @@ if __name__ == "__main__":
     print(wifi.scan_wifi(['wlan0', 'wlan1']))
     print(wifi.get_internet_speed())
     print(wifi.check_internet_connection())
-    print(wifi.connect_wifi('wlan1','dd-wrt', None))
-
+    print(wifi.connect_wifi('wlan1', 'dd-wrt', None))
