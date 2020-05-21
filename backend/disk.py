@@ -175,7 +175,7 @@ class Disks (object):
 
         perf = dict()
 
-        p = subprocess.run("dd count=1000 bs=1M if=/dev/urandom of={}/test.img".format(mount_point),
+        p = subprocess.run("dd count=1000 bs=1M if=/dev/zero of={}/test.img".format(mount_point),
                            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if p.returncode != 0:
             raise Exception(
@@ -184,11 +184,11 @@ class Disks (object):
         temp = p.stderr.decode()
         perf['write']=temp.splitlines()[-1]
 
+        # Free buffer
         self.umount_disk(disk)
         self.mount_disk(disk)
         
         mount_point = self.find_disk(disk)['mountpoint']
-        
 
         p = subprocess.run("dd count=1000 bs=1M if={}/test.img of=/dev/null".format(mount_point),
                            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
