@@ -175,7 +175,7 @@ class Disks (object):
 
         perf = dict()
 
-        p = subprocess.run("dd count=1000 bs=1M if=/dev/zero of={}/test.img".format(mount_point),
+        p = subprocess.run("sudo dd count=1000 bs=1M if=/dev/zero of={}/test.img".format(mount_point),
                            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if p.returncode != 0:
             raise Exception(
@@ -190,7 +190,7 @@ class Disks (object):
         
         mount_point = self.find_disk(disk)['mountpoint']
 
-        p = subprocess.run("dd count=1000 bs=1M if={}/test.img of=/dev/null".format(mount_point),
+        p = subprocess.run("sudo dd count=1000 bs=1M if={}/test.img of=/dev/null".format(mount_point),
                            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
         if p.returncode != 0:
@@ -199,29 +199,41 @@ class Disks (object):
         
         temp = p.stderr.decode()
         perf['read'] = temp.splitlines()[-1]
-        os.remove('{}/test.img'.format(mount_point))
+        p = subprocess.run("sudo sudo rm {}/test.img".format(mount_point),
+                           shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
         return perf
 
     def check_disk_capacity_performance_errors(self, disk):
+        self.umount_disk(disk)
         self.format_disk(disk, 'ext4')
         mount_point = self.mount_disk(disk)
-        p = subprocess.Popen([" sudo f3write . >/dev/null 2> /tmp/shred.txt & disown".format(
-            disk)], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen([" sudo f3write {}  ".format(
+            mount_point)], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         p.wait()
+        print (p.stdout.decode())
         if p.poll() is not None:
             raise Exception(
                 'DiskError', 'unable_to_shred_disk: {}'.format(p.stderr))
-        else:
-            return p.pid
+        p = subprocess.Popen([" sudo f3read {} > /tmp/f3read.txt ".format(
+            mount_point)], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p.wait()
+        print (p.stdout.decode())
 
 
-        pass
+    def format_disk(self, disk, fstype):
+        """format the disk with given fs type
 
-    def format_disk(self, disk, type):
+        Arguments:
+            disk {str} -- path of the disk, example: '/dev/sda' 
+            fstype {str} -- type of filesystem, example: 'ext4'
+
+        Raises:
+            Exception: formating disk is impossible
+        """
         self.refresh_disks()
         temp_disk = self.find_disk(disk)
-        p_format = subprocess.run("sudo mkfs -F -t {} {}".format(type, disk),
+        p_format = subprocess.run("sudo mkfs -F -t {} {}".format(fstype, disk),
                                   shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if p_format.returncode != 0:
             raise Exception('DiskError', 'unable_to_format_disk: {} {}'.format(
@@ -292,4 +304,5 @@ if __name__ == "__main__":
     # print(disk.umount_disk('/media/sda'))
     # print(disk.shred_disks('/dev/sda'))
     # print(disk.format_disk('/dev/sda', 'ext4'))
-    print (disk.check_read_and_write_disk_performance('/dev/sdb'))
+    print (disk.check_read_and_write_disk_performance('/dev/sdc'))
+    print (disk.check_disk_capacity_performance_errors('/dev/sdc'))

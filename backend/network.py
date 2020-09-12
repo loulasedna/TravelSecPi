@@ -77,6 +77,14 @@ class network(object):
             raise Exception('nat','unable_to_deactivate_nat')
 
     def check_internet_connection(self):
+        """execute some tests to check internet access:
+        - check if there is a default route
+        - check if default gateway in pingable
+        - check if dns resolution is possible
+        - check if ping on internet 
+        Returns:
+            dict -- test 
+        """
         check = dict()
         check['default_gw'] = False
         check['default_ping'] = False
@@ -132,13 +140,37 @@ class network(object):
         return check
 
     def get_internet_speed(self):
+        """try to make a speed test using speedtest-cli
+
+        Raises:
+            Exception: command cannot be executed
+
+        Returns:
+            str -- output of command in json format
+        """
         p = subprocess.run("speedtest-cli --json", shell=True,
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        return p.stdout.decode() if p.returncode == 0 else p.stderr.decode()
+        
+        if p.returncode != 0:
+                raise Exception('network','unable_to_check_internet_speed')
+        
+        return p.stdout.decode() 
+    
 
 
 class wifi_interfaces(network):
     def scan_wifi(self, wifi_interfaces):
+        """scan wifi hotspot using given interface
+
+        Arguments:
+            wifi_interfaces {list} -- list if wifi interfaces : wlan0, wlan1 ... 
+
+        Raises:
+            Exception: impossible to scan wifi
+
+        Returns:
+            list -- list of wifi properties
+        """
         wifi_interfaces = list(wifi_interfaces)
         scan = dict()
         for wifi_interface in wifi_interfaces:
@@ -149,7 +181,7 @@ class wifi_interfaces(network):
                 wifi_interface), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
             if process.returncode != 0:
-                raise Exception()
+                raise Exception('network','unable_to_scan_wifi')
 
             item = None
             lines = process.stdout.decode().splitlines()
