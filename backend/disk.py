@@ -277,21 +277,84 @@ class Disks (object):
 
     def create_luks_disks(self, disks=None):
         """ 
-        create 
-        sudo cryptsetup --cipher aes-xts-plain64 --key-size 512 --hash sha512 --iter-time 2000 --align-payload=2048 -v luksFormat /dev/sda
+        https://gist.github.com/naomik/5428370
+        LUKS crypt
 
-        sudo cryptsetup luksOpen /dev/sda1 my_encrypted_volume
-        Now you can mount it as usual:
+        In this guide, I'm going to setup a keyfile-encrypted LUKS partition. I will be using a single, max-size partition on a single physical device. My physical device is located at /dev/sde
+        partition the physical device
 
-        sudo mkdir /media/my_device
-        sudo mount /dev/mapper/my_encrypted_volume /media/my_device
-        To lock the container again, it needs to be unmounted first:
+        parted /dev/sde
+        (parted) mklabel gpt
+        (parted) mkpart primary 1 -1
+        (parted) quit
 
-        sudo umount /media/my_device
-        sudo cryptsetup luksClose my_encrypted_volume
-        To automatically put it in the /media location, use the udisks tool
+        create the key file
 
-        sudo udisks --mount /dev/mapper/my_encrypted_volume """
+        Before we go further, let's create our 2048-bit key file first. I'm going to install it /root/secret.key
+
+        sudo dd if=/dev/urandom of=/root/secret.key bs=1024 count=2
+        sudo chmod 0400 /root/secret.key
+
+        create LUKS partition
+
+        In my case, /dev/sde1 was created by parted. Create the LUKS partition with our key file now.
+
+        cryptsetup luksFormat /dev/sde1 /root/secret.key
+
+        Associating our key with the LUKS partition will allow us to automount it later and prevent us from ever seeing a password prompt.
+
+        cryptsetup luksAddKey /dev/sde1 /root/secret.key --key-file=/root/secret.key
+
+        initialize the LUKS partition
+
+        Before we can start using our LUKS partition, we have to size it properly and format it first. In order to do that, we will first use luksOpen which creates an IO backing device that allows us to interact with the partition. I'll call my device secret; you can call yours whatever you want.
+
+        cryptsetup luksOpen /dev/sde1 secret --key-file=/root/secret.key
+
+        the LUKS mapping device will now be available at /dev/mapper/secret
+        size the LUKS partition
+
+        When using resize without any additional vars, it will use the max size of the underlying partition.
+
+        cryptsetup resize secret
+
+        format the LUKS partition
+
+        I'm going to use ext3; you can use whatever you want.
+
+        mkfs.ext3 /dev/mapper/secret
+
+        create a mount point
+
+        I'll create a mount point at /secret
+
+        sudo mkdir -p /secret
+        sudo chmod 755 /secret
+
+        mount the LUKS mapping device
+
+        mount /dev/mapper/secret /secret
+        df /secret
+
+        automountable
+
+        To avoid the hassle of mounting are encrypted volume manually, we can set it up such that it automounts using the specified key file. First you have to get the UUID for your partition.
+
+        ls -l /dev/disk/by-uuid
+
+        Find the UUID that links to your disk. In my case, it is 651322a-8171-49b4-9707-a96698ec826e.
+
+        export UUID="651322a-8171-49b4-9707-a96698ec826e"
+        sudo echo "secret UUID=${UUID} /root/secret.key luks" >> /etc/crypttab
+
+        Finally, specify the automount
+
+        sudo echo "/dev/mapper/secret /secret auto" >> /etc/fstab
+
+        Mount stuff!
+
+        sudo mount -a
+        """
         pass
 
 
